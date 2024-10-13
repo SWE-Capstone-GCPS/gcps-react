@@ -29,8 +29,15 @@ class KafkaEventConsumer:
             except json.JSONDecodeError:
                 print(f"Failed to decode message: {msg.value()}")
 
+    def close(self):
+        self.consumer.close()
 
-# Usage
-consumer = KafkaEventConsumer('localhost:9092', 'gcps_team2', ['gcps-events'])
-for event in consumer.consume_events():
-    print(f"Received event: {event}")
+if __name__ == "__main__":
+    consumer = KafkaEventConsumer('localhost:9092', 'gcps_team2', ['asset_location', 'asset_speed'])
+    try:
+        for event in consumer.consume_events():
+            print(f"Received event: {event}")
+    except KeyboardInterrupt:
+        print("Stopping consumer...")
+    finally:
+        consumer.close()

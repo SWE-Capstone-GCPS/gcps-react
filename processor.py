@@ -1,5 +1,5 @@
-import json
 from datetime import datetime
+import json
 
 class DataProcessor:
     def process_event(self, event):

@@ -14,7 +14,8 @@ function App() {
 
   const [center, setCenter] = useState(INITIAL_CENTER);
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  const [busData, setBusData] = useState([]);
+  const [busPosition, setBusPosition] = useState(INITIAL_CENTER);
+  const [busSpeed, setBusSpeed] = useState(0);
 
   useEffect(() => {
     mapboxgl.accessToken = 'pk.eyJ1Ijoic2FyYWhmYXNoaW5hc2kiLCJhIjoiY20xczg0cWRyMDNtOTJsb2R6cmNiZmRyNyJ9.Utvb8kECGGDYQljL0fknfA';
@@ -33,52 +34,64 @@ function App() {
 
     mapRef.current.on('load', () => {
       console.log('Map loaded');
-    });
 
-      return () => {
-        if (mapRef.current) {
-          mapRef.current.remove();
-        }
-      };
-    }, []);
-  
-    useEffect(() => {
-      wsRef.current = new WebSocket('ws://localhost:8765');
-  
-      wsRef.current.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        setBusData(data);
-      };
-  
-      return () => {
-        if (wsRef.current) {
-          wsRef.current.close();
-        }
-      };
-    }, []);
-  
-    useEffect(() => {
-      if (!mapRef.current) return;
-  
-      busData.forEach((bus) => {
-        if (!busMarkersRef.current[bus.asset_id]) {
-          const el = document.createElement('div');
-          el.className = 'bus-marker';
-          el.style.backgroundImage = 'url(https://hebbkx1anhila5yf.public.blob.vercel-storage.com/bus-i33k23ytUTsMTcfzdld0jMMkEOtT6D.png)';
-          el.style.width = '40px';
-          el.style.height = '40px';
-          el.style.backgroundSize = 'cover';
+      if (!mapRef.current) {
+        console.error('Map reference is null');
+        return;
+      }
+
+      // Create a DOM element for the marker
+      const el = document.createElement('div');
+      el.className = 'bus-marker';
+      el.style.backgroundImage = 'url(https://hebbkx1anhila5yf.public.blob.vercel-storage.com/bus-i33k23ytUTsMTcfzdld0jMMkEOtT6D.png)';
+      el.style.width = '40px';
+      el.style.height = '40px';
+      el.style.backgroundSize = 'cover';
 
       // Add marker to the map
       busMarkerRef.current = new mapboxgl.Marker(el)
         .setLngLat(busPosition)
         .addTo(mapRef.current);
 
-      } else {
-        busMarkersRef.current[bus.asset_id].setLngLat([bus.longitude, bus.latitude]);
-      }
+      console.log('Bus marker added');
     });
-  }, [busData]);
+
+    return () => {
+      if (mapRef.current) {
+        mapRef.current.remove();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    wsRef.current = new WebSocket('ws://localhost:8765');
+
+    wsRef.current.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.length > 0) {
+        const latestBus = data[0];
+        if (latestBus.latitude && latestBus.longitude) {
+          setBusPosition([latestBus.longitude, latestBus.latitude]);
+        }
+        if (latestBus.speed) {
+          setBusSpeed(latestBus.speed);
+        }
+      }
+    };
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (busMarkerRef.current) {
+      busMarkerRef.current.setLngLat(busPosition);
+      console.log('Bus marker position updated:', busPosition);
+    }
+  }, [busPosition]);
 
   const handleButtonClick = () => {
     if (mapRef.current) {
@@ -92,11 +105,9 @@ function App() {
   return (
     <>
       <div className="sidebar">
-        {busData.map((bus) => (
-          <div key={bus.asset_id}>
-            Bus {bus.asset_id}: Lat {bus.latitude.toFixed(4)}, Lon {bus.longitude.toFixed(4)}, Speed {bus.speed ? bus.speed.toFixed(2) : 'N/A'} mph
-          </div>
-        ))}
+        Longitude: {busPosition[0].toFixed(4)} | Latitude: {busPosition[1].toFixed(4)} | Zoom: {zoom.toFixed(2)}
+        <br />
+        Bus Speed: {busSpeed.toFixed(2)} mph
       </div>
       <button className="reset-button" onClick={handleButtonClick}>
         Reset

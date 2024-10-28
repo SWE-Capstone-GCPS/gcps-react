@@ -1,6 +1,7 @@
 from consumer import KafkaEventConsumer
 from processor import DataProcessor
 import mysql.connector
+from datetime import datetime
 
 class DatabaseManager:
     def __init__(self, host, user, password, database):
@@ -12,20 +13,20 @@ class DatabaseManager:
         )
         self.cursor = self.connection.cursor()
 
-    def insert_events(self, location_event, speed_event):
+    def insert_events(self, tracking_event):
         query = """
-            INSERT INTO asset_events (asset_id, event_type, latitude, longitude, speed, timestamp)
-            VALUES (-------)
-        """ # insert values and make sure the columns match the SQL Server database
-       self.cursor.execute(query, (
-            location_event['asset_id'], 'location', 
-            location_event['latitude'], location_event['longitude'], 
-            None, location_event['timestamp']
-        ))
+            INSERT INTO Event_Instances (Event_ID, Asset_ID, Event_Type, 
+            Happened_At_Time, Row_Modified_Time, Is_Valid, Script_Version)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+        """
         self.cursor.execute(query, (
-            speed_event['asset_id'], 'speed',
-            None, None, 
-            speed_event['speed'], speed_event['timestamp']
+            tracking_event['Event_ID'],
+            tracking_event['Asset_ID'],
+            tracking_event['Event_Type'],
+            tracking_event['Happened_At_Time'],
+            datetime.now(),  # Row_Modified_Time
+            tracking_event['Is_Valid'],
+            tracking_event['Script_Version']
         ))
         self.connection.commit()
 
@@ -36,7 +37,7 @@ class DatabaseManager:
 def main():
     consumer = KafkaEventConsumer('localhost:9092', 'gcps_team2', ['asset_location', 'asset_speed'])
     processor = DataProcessor()
-    db_manager = DatabaseManager('localhost', 'your_username', 'your_password', 'bus_monitoring')# need to insert server info here
+    db_manager = DatabaseManager('localhost', 'your_username', 'your_password', 'your_database_name')
 
     print("Starting main application...")
     event_pairs = {}
@@ -61,7 +62,29 @@ def main():
                 
                 if location_event and speed_event and location_event['timestamp'] == speed_event['timestamp']:
                     print(f"Inserting paired events for asset {asset_id}")
-                    db_manager.insert_events(location_event, speed_event)
+                    
+                    # Create a tracking event for location
+                    location_tracking_event = {
+                        'Event_ID': f"{asset_id}_location_{location_event['timestamp'].strftime('%Y%m%d%H%M%S')}",
+                        'Asset_ID': asset_id,
+                        'Event_Type': 'asset_location',
+                        'Happened_At_Time': location_event['timestamp'],
+                        'Is_Valid': 1,
+                        'Script_Version': '1.0'
+                    }
+                    db_manager.insert_events(location_tracking_event)
+                    
+                    # Create a tracking event for speed
+                    speed_tracking_event = {
+                        'Event_ID': f"{asset_id}_speed_{speed_event['timestamp'].strftime('%Y%m%d%H%M%S')}",
+                        'Asset_ID': asset_id,
+                        'Event_Type': 'asset_speed',
+                        'Happened_At_Time': speed_event['timestamp'],
+                        'Is_Valid': 1,
+                        'Script_Version': '1.0'
+                    }
+                    db_manager.insert_events(speed_tracking_event)
+                    
                     del event_pairs[asset_id]
                 else:
                     print(f"Incomplete or mismatched events for asset {asset_id}. Waiting for matching event.")

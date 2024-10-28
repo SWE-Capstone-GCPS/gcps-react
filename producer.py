@@ -26,28 +26,26 @@ class KafkaEventProducerSimulator:
         # generates list of latitude, longitude pairs for bus route
         return [(random.uniform(33.5, 34.5), random.uniform(-84.5, -83.5)) for _ in range(10)]
 
-    def produce_bus_event(self, asset_id, event_count):
-        timestamp = int(time.time() * 1000)
-        route = self.routes[asset_id]
-        current_position = route[event_count % len(route)]  # cycle through route points
-
-        location_event = {
-            'type': 'asset_location',
-            'assetId': asset_id,
-            'timestamp': timestamp,
-            'latitude': current_position[0],
-            'longitude': current_position[1]
-        }
-
-        speed_event = {
-            'type': 'asset_speed',
-            'assetId': asset_id,
-            'timestamp': timestamp,
-            'speed': random.uniform(0, 65) 
+    def produce_bus_event(self, assetID, eventCount):
+        happenedAtTime = int(time.time() * 1000)
+        route = self.routes[assetID]
+        current_position = route[eventCount % len(route)]  # cycle through route points
+        eventID = -1
+        tracking_event = {
+            'Event_ID': eventID,
+            'Asset_ID': assetID,
+            'Event_Type': 'Asset_Tracking_Event',
+            'Happened_At_Time': happenedAtTime,
+            'Is_Valid': 1,
+            'Script_Version': sys.version,
+            'Latitude': current_position[0],
+            'Longitude': current_position[1],
+            'Speed': random.uniform(0, 65)
         }
 
         self.produce_event('asset_location', location_event)
         self.produce_event('asset_speed', speed_event)
+        self.produce_event('Asset_Tracking_Event', tracking_event)
 
     def run_simulation(self, num_events, interval):
         print(f"Starting simulation: {num_events} events with {interval} second interval")
@@ -56,7 +54,7 @@ class KafkaEventProducerSimulator:
             self.produce_bus_event(asset_id, i)
             time.sleep(interval)
             print(f"Produced events {i*2+1} and {i*2+2}/{num_events*2} for asset {asset_id}")
-        
+
         self.producer.flush()
         print("Simulation complete")
 

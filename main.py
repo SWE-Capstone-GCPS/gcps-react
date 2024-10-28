@@ -1,27 +1,42 @@
 from consumer import KafkaEventConsumer
 from processor import DataProcessor
-import pyodbc
+import mysql.connector
 
 class DatabaseManager:
-    def __init__(self, connection_string):
-        self.connection_string = connection_string
+    def __init__(self, host, user, password, database):
+        self.connection = mysql.connector.connect(
+            host=host,
+            user=user,
+            password=password,
+            database=database
+        )
+        self.cursor = self.connection.cursor()
 
     def insert_events(self, location_event, speed_event):
         query = """
             INSERT INTO asset_events (asset_id, event_type, latitude, longitude, speed, timestamp)
             VALUES (-------)
         """ # insert values and make sure the columns match the SQL Server database
-        with pyodbc.connect(self.connection_string) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(query, 
-                    location_event['asset_id'], 'location', location_event['latitude'], location_event['longitude'], None, location_event['timestamp'],
-                    speed_event['asset_id'], 'speed', None, None, speed_event['speed'], speed_event['timestamp'])
-            conn.commit()
+       self.cursor.execute(query, (
+            location_event['asset_id'], 'location', 
+            location_event['latitude'], location_event['longitude'], 
+            None, location_event['timestamp']
+        ))
+        self.cursor.execute(query, (
+            speed_event['asset_id'], 'speed',
+            None, None, 
+            speed_event['speed'], speed_event['timestamp']
+        ))
+        self.connection.commit()
+
+    def close(self):
+        self.cursor.close()
+        self.connection.close()
 
 def main():
     consumer = KafkaEventConsumer('localhost:9092', 'gcps_team2', ['asset_location', 'asset_speed'])
     processor = DataProcessor()
-    db_manager = DatabaseManager('DRIVER={ODBC Driver 17 for SQL Server};---------')# need to insert server info here
+    db_manager = DatabaseManager('localhost', 'your_username', 'your_password', 'bus_monitoring')# need to insert server info here
 
     print("Starting main application...")
     event_pairs = {}
@@ -55,6 +70,7 @@ def main():
         print("Application interrupted. Shutting down...")
     finally:
         consumer.close()
+        db_manager.close()
         print("Application shut down complete.")
 
 if __name__ == "__main__":

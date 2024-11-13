@@ -1,0 +1,64 @@
+version: '3'
+
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    ports:
+      - "2182:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    ports:
+      - "9092:9092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_USER: gcpsteam2
+      MYSQL_PASSWORD: GcpsTeam2@2024
+      MYSQL_DATABASE: bus_monitoring
+    volumes:
+      - mysql_data:/var/lib/mysql
+
+  app:
+    build: .
+    ports:
+      - "8765:8765"
+    depends_on:
+      - kafka
+      - mysql
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      MYSQL_HOST: mysql
+      MYSQL_USER: gcpsteam2
+      MYSQL_PASSWORD: GcpsTeam2@2024
+      MYSQL_DATABASE: bus_monitoring
+
+  websocket:
+    build: .
+    command: python websocket_server.py
+    ports:
+      - "8766:8765"
+    depends_on:
+      - mysql
+    environment:
+      MYSQL_HOST: mysql
+      MYSQL_USER: gcpsteam2
+      MYSQL_PASSWORD: GcpsTeam2@2024
+      MYSQL_DATABASE: bus_monitoring
+
+volumes:
+  mysql_data:

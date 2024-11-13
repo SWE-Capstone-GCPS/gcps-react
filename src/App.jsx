@@ -6,16 +6,28 @@ import './App.css';
 const INITIAL_CENTER = [-83.9921, 33.9519]; // Coordinates for Gwinnett County
 const INITIAL_ZOOM = 13;
 
+// Route for BUS-001: Lawrenceville to Duluth
+const BUS_ROUTE = [
+  { lat: 33.9562, lng: -83.9879 }, // Lawrenceville Square
+  { lat: 33.9584, lng: -83.9925 }, // W Crogan St
+  { lat: 33.9619, lng: -84.0024 }, // GA-20 W
+  { lat: 33.9704, lng: -84.0270 }, // Buford Dr NW
+  { lat: 33.9736, lng: -84.0718 }, // Pleasant Hill Rd
+  { lat: 33.9696, lng: -84.0947 }, // Duluth Hwy
+  { lat: 33.9592, lng: -84.1118 }, // Duluth Town Green
+];
+
 function App() {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const busMarkerRef = useRef(null);
-  const wsRef = useRef(null);
+  const animationRef = useRef(null);
 
   const [center, setCenter] = useState(INITIAL_CENTER);
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  const [busPosition, setBusPosition] = useState(INITIAL_CENTER);
+  const [busPosition, setBusPosition] = useState(BUS_ROUTE[0]);
   const [busSpeed, setBusSpeed] = useState(0);
+  const [routeIndex, setRouteIndex] = useState(0);
 
   useEffect(() => {
     mapboxgl.accessToken = 'pk.eyJ1Ijoic2FyYWhmYXNoaW5hc2kiLCJhIjoiY20xczg0cWRyMDNtOTJsb2R6cmNiZmRyNyJ9.Utvb8kECGGDYQljL0fknfA';
@@ -28,7 +40,7 @@ function App() {
     mapRef.current = new mapboxgl.Map({
       container: mapContainerRef.current,
       style: 'mapbox://styles/mapbox/streets-v11',
-      center: center,
+      center: [busPosition.lng, busPosition.lat],
       zoom: zoom
     });
 
@@ -50,10 +62,37 @@ function App() {
 
       // Add marker to the map
       busMarkerRef.current = new mapboxgl.Marker(el)
-        .setLngLat(busPosition)
+        .setLngLat([busPosition.lng, busPosition.lat])
         .addTo(mapRef.current);
 
       console.log('Bus marker added');
+
+      // Add the route to the map
+      mapRef.current.addSource('route', {
+        'type': 'geojson',
+        'data': {
+          'type': 'Feature',
+          'properties': {},
+          'geometry': {
+            'type': 'LineString',
+            'coordinates': BUS_ROUTE.map(point => [point.lng, point.lat])
+          }
+        }
+      });
+
+      mapRef.current.addLayer({
+        'id': 'route',
+        'type': 'line',
+        'source': 'route',
+        'layout': {
+          'line-join': 'round',
+          'line-cap': 'round'
+        },
+        'paint': {
+          'line-color': '#888',
+          'line-width': 2
+        }
+      });
     });
 
     return () => {
@@ -64,31 +103,31 @@ function App() {
   }, []);
 
   useEffect(() => {
-    wsRef.current = new WebSocket('ws://localhost:8765');
+    // Simulated WebSocket
+    const simulateWebSocket = () => {
+      const nextIndex = (routeIndex + 1) % BUS_ROUTE.length;
+      const nextPosition = BUS_ROUTE[nextIndex];
+      const speed = Math.random() * 30 + 10; // Random speed between 10 and 40 mph
 
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.length > 0) {
-        const latestBus = data[0];
-        if (latestBus.latitude && latestBus.longitude) {
-          setBusPosition([latestBus.longitude, latestBus.latitude]);
-        }
-        if (latestBus.speed) {
-          setBusSpeed(latestBus.speed);
-        }
+      setBusPosition(nextPosition);
+      setBusSpeed(speed);
+      setRouteIndex(nextIndex);
+
+      // Move the map center to follow the bus
+      if (mapRef.current) {
+        mapRef.current.setCenter([nextPosition.lng, nextPosition.lat]);
       }
     };
 
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-    };
-  }, []);
+    // Simulate WebSocket updates every 5 seconds
+    const intervalId = setInterval(simulateWebSocket, 5000);
+
+    return () => clearInterval(intervalId);
+  }, [routeIndex]);
 
   useEffect(() => {
     if (busMarkerRef.current) {
-      busMarkerRef.current.setLngLat(busPosition);
+      busMarkerRef.current.setLngLat([busPosition.lng, busPosition.lat]);
       console.log('Bus marker position updated:', busPosition);
     }
   }, [busPosition]);
@@ -103,17 +142,23 @@ function App() {
   };
 
   return (
-    <>
+    <div className="app-container">
       <div className="sidebar">
-        Longitude: {busPosition[0].toFixed(4)} | Latitude: {busPosition[1].toFixed(4)} | Zoom: {zoom.toFixed(2)}
-        <br />
-        Bus Speed: {busSpeed.toFixed(2)} mph
+        <h2 className="sidebar-title">Bus Information</h2>
+        <div className="bus-details">
+          <p>Longitude: {busPosition.lng.toFixed(4)}</p>
+          <p>Latitude: {busPosition.lat.toFixed(4)}</p>
+          <p>Speed: {busSpeed.toFixed(2)} mph</p>
+          <p>Zoom: {zoom.toFixed(2)}</p>
+        </div>
       </div>
-      <button className="reset-button" onClick={handleButtonClick}>
-        Reset
-      </button>
-      <div id="map-container" ref={mapContainerRef} style={{ width: '100vw', height: '100vh' }} />
-    </>
+      <div className="map-wrapper">
+        <button className="reset-button" onClick={handleButtonClick}>
+          Reset View
+        </button>
+        <div id="map-container" ref={mapContainerRef} className="map-container" />
+      </div>
+    </div>
   );
 }
 

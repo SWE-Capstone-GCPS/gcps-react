@@ -1,47 +1,50 @@
+import os
 from confluent_kafka import Consumer, KafkaError
 import json
+import logging
 
-class KafkaEventConsumer:
-    def __init__(self, bootstrap_servers, group_id, topics):
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+BOOTSTRAP_SERVERS = os.getenv('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
+TOPIC = os.getenv('KAFKA_TOPIC', 'Asset_Tracking_Event')
+GROUP_ID = os.getenv('KAFKA_GROUP_ID', 'gcps_team2')
+
+class KafkaConsumer:
+    def __init__(self):
         self.consumer = Consumer({
-            'bootstrap.servers': bootstrap_servers,
-            'group.id': group_id,
+            'bootstrap.servers': BOOTSTRAP_SERVERS,
+            'group.id': GROUP_ID,
             'auto.offset.reset': 'earliest'
         })
-        self.consumer.subscribe(topics)
-        print(f"Consumer initialized with bootstrap servers: {bootstrap_servers}")
-        print(f"Subscribed to topics: {topics}")
+        self.consumer.subscribe([TOPIC])
 
     def consume_events(self):
-        print("Starting to consume events...")
         while True:
             msg = self.consumer.poll(1.0)
             if msg is None:
                 continue
             if msg.error():
                 if msg.error().code() == KafkaError._PARTITION_EOF:
-                    print("Reached end of partition")
+                    logging.info('Reached end of partition')
                     continue
                 else:
-                    print(f"Consumer error: {msg.error()}")
+                    logging.error(f'Consumer error: {msg.error()}')
                     break
             try:
                 event = json.loads(msg.value().decode('utf-8'))
-                print(f"Received event: {event}")
                 yield event
             except json.JSONDecodeError:
-                print(f"Failed to decode message: {msg.value()}")
+                logging.error(f'Failed to decode message: {msg.value()}')
 
     def close(self):
-        print("Closing consumer...")
         self.consumer.close()
 
 if __name__ == "__main__":
-    consumer = KafkaEventConsumer('localhost:9092', 'gcps_team2', ['asset_location', 'asset_speed'])
+    consumer = KafkaConsumer(BOOTSTRAP_SERVERS, GROUP_ID, [TOPIC])
     try:
         for event in consumer.consume_events():
-            print(f"Main consumer loop: {event}")
+            logging.info(f"Received event: {event}")
     except KeyboardInterrupt:
-        print("Stopping consumer...")
+        logging.info("Stopping consumer...")
     finally:
         consumer.close()

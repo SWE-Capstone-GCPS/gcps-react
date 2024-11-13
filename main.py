@@ -1,100 +1,128 @@
-from consumer import KafkaEventConsumer
-from processor import DataProcessor
-import mysql.connector
+import os
+import asyncio
+import json
+import random
+import time
+import logging
+from confluent_kafka import Producer, Consumer, KafkaError
 from datetime import datetime
 
-class DatabaseManager:
-    def __init__(self, host, user, password, database):
-        self.connection = mysql.connector.connect(
-            host=host,
-            user=user,
-            password=password,
-            database=database
-        )
-        self.cursor = self.connection.cursor()
+# Import the DataProcessor and DatabaseManager
+from processor import DataProcessor
+from database-manager import DatabaseManager
 
-    def insert_events(self, tracking_event):
-        query = """
-            INSERT INTO Event_Instances (Event_ID, Asset_ID, Event_Type, 
-            Happened_At_Time, Row_Modified_Time, Is_Valid, Script_Version)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """
-        self.cursor.execute(query, (
-            tracking_event['Event_ID'],
-            tracking_event['Asset_ID'],
-            tracking_event['Event_Type'],
-            tracking_event['Happened_At_Time'],
-            datetime.now(),  # Row_Modified_Time
-            tracking_event['Is_Valid'],
-            tracking_event['Script_Version']
-        ))
-        self.connection.commit()
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-    def close(self):
-        self.cursor.close()
-        self.connection.close()
+# Kafka configuration
+BOOTSTRAP_SERVERS = 'localhost:9092'
+TOPIC = 'Asset_Tracking_Event'
+GROUP_ID = 'gcps_team2'
 
-def main():
-    consumer = KafkaEventConsumer('localhost:9092', 'gcps_team2', ['asset_location', 'asset_speed'])
-    processor = DataProcessor()
-    db_manager = DatabaseManager('localhost', 'your_username', 'your_password', 'your_database_name')
+# MySQL configuration
+DB_CONFIG = {
+    'host': 'localhost',
+    'user': 'gcpsteam2',
+    'password': 'GcpsTeam2@2024',
+    'database': 'bus_monitoring'
+}
 
-    print("Starting main application...")
-    event_pairs = {}
-    try:
-        for event in consumer.consume_events():
-            processed_event, error = processor.process_event(event)
-            if error:
-                print(f"Error processing event: {error}")
+class BusTrackingSystem:
+    def __init__(self):
+        self.producer = Producer({'bootstrap.servers': BOOTSTRAP_SERVERS})
+        self.consumer = Consumer({
+            'bootstrap.servers': BOOTSTRAP_SERVERS,
+            'group.id': GROUP_ID,
+            'auto.offset.reset': 'earliest'
+        })
+        self.consumer.subscribe([TOPIC])
+        self.data_processor = DataProcessor()
+        self.db_manager = DatabaseManager(DB_CONFIG)
+        self.routes = {
+            'BUS-001': [
+                {'lat': 33.9562, 'lng': -83.9879},  # Lawrenceville Square
+                {'lat': 33.9584, 'lng': -83.9925},  # W Crogan St
+                {'lat': 33.9619, 'lng': -84.0024},  # GA-20 W
+                {'lat': 33.9704, 'lng': -84.0270},  # Buford Dr NW
+                {'lat': 33.9736, 'lng': -84.0718},  # Pleasant Hill Rd
+                {'lat': 33.9696, 'lng': -84.0947},  # Duluth Hwy
+                {'lat': 33.9592, 'lng': -84.1118},  # Duluth Town Green
+            ],
+            # Add other bus routes here...
+        }
+
+    def delivery_report(self, err, msg):
+        if err is not None:
+            logging.error(f'Message delivery failed: {err}')
+        else:
+            logging.info(f'Message delivered to {msg.topic()} [{msg.partition()}]')
+
+    def interpolate_position(self, start, end, progress):
+        return {
+            'lat': start['lat'] + (end['lat'] - start['lat']) * progress,
+            'lng': start['lng'] + (end['lng'] - start['lng']) * progress,
+        }
+
+    def generate_bus_event(self, bus_id, route_progress):
+        route = self.routes[bus_id]
+        segment_index = int(route_progress * (len(route) - 1))
+        segment_progress = (route_progress * (len(route) - 1)) % 1
+
+        start = route[segment_index]
+        end = route[segment_index + 1] if segment_index < len(route) - 1 else route[0]
+        current_position = self.interpolate_position(start, end, segment_progress)
+
+        return {
+            'Event_ID': f"{bus_id}_{int(time.time() * 1000)}",
+            'Vehicle_ID': bus_id,
+            'Event_Type': 'Asset_Tracking_Event',
+            'Happened_At_Time': int(time.time() * 1000),
+            'Latitude': current_position['lat'],
+            'Longitude': current_position['lng'],
+            'ECU_Speed_MPH': random.uniform(10, 40),
+            'GPS_Time': int(time.time() * 1000)
+        }
+
+    def produce_event(self, event):
+        self.producer.produce(TOPIC, json.dumps(event).encode('utf-8'), callback=self.delivery_report)
+        self.producer.poll(0)
+
+    async def produce_events(self):
+        route_duration = 300  # 5 minutes for a full route cycle
+        while True:
+            for bus_id in self.routes.keys():
+                route_progress = (time.time() % route_duration) / route_duration
+                event = self.generate_bus_event(bus_id, route_progress)
+                self.produce_event(event)
+            await asyncio.sleep(1)  # Produce events every second
+
+    async def consume_events(self):
+        while True:
+            msg = self.consumer.poll(1.0)
+            if msg is None:
                 continue
-
-            asset_id = processed_event['asset_id']
-            event_type = processed_event['type']
-            
-            if asset_id not in event_pairs:
-                event_pairs[asset_id] = {}
-            
-            event_pairs[asset_id][event_type] = processed_event
-            
-            if len(event_pairs[asset_id]) == 2:
-                location_event = event_pairs[asset_id].get('asset_location')
-                speed_event = event_pairs[asset_id].get('asset_speed')
-                
-                if location_event and speed_event and location_event['timestamp'] == speed_event['timestamp']:
-                    print(f"Inserting paired events for asset {asset_id}")
-                    
-                    # Create a tracking event for location
-                    location_tracking_event = {
-                        'Event_ID': f"{asset_id}_location_{location_event['timestamp'].strftime('%Y%m%d%H%M%S')}",
-                        'Asset_ID': asset_id,
-                        'Event_Type': 'asset_location',
-                        'Happened_At_Time': location_event['timestamp'],
-                        'Is_Valid': 1,
-                        'Script_Version': '1.0'
-                    }
-                    db_manager.insert_events(location_tracking_event)
-                    
-                    # Create a tracking event for speed
-                    speed_tracking_event = {
-                        'Event_ID': f"{asset_id}_speed_{speed_event['timestamp'].strftime('%Y%m%d%H%M%S')}",
-                        'Asset_ID': asset_id,
-                        'Event_Type': 'asset_speed',
-                        'Happened_At_Time': speed_event['timestamp'],
-                        'Is_Valid': 1,
-                        'Script_Version': '1.0'
-                    }
-                    db_manager.insert_events(speed_tracking_event)
-                    
-                    del event_pairs[asset_id]
+            if msg.error():
+                if msg.error().code() == KafkaError._PARTITION_EOF:
+                    logging.info('Reached end of partition')
                 else:
-                    print(f"Incomplete or mismatched events for asset {asset_id}. Waiting for matching event.")
+                    logging.error(f'Consumer error: {msg.error()}')
+            else:
+                try:
+                    event = json.loads(msg.value().decode('utf-8'))
+                    processed_event, error = self.data_processor.process_event(event)
+                    if error:
+                        logging.error(f"Error processing event: {error}")
+                    else:
+                        self.db_manager.insert_event(processed_event)
+                except json.JSONDecodeError:
+                    logging.error(f'Failed to decode message: {msg.value()}')
+            await asyncio.sleep(0.1)  # Small delay to prevent busy-waiting
 
-    except KeyboardInterrupt:
-        print("Application interrupted. Shutting down...")
-    finally:
-        consumer.close()
-        db_manager.close()
-        print("Application shut down complete.")
+    async def run(self):
+        producer_task = asyncio.create_task(self.produce_events())
+        consumer_task = asyncio.create_task(self.consume_events())
+        await asyncio.gather(producer_task, consumer_task)
 
 if __name__ == "__main__":
-    main()
+    bus_tracking_system = BusTrackingSystem()
+    asyncio.run(bus_tracking_system.run())

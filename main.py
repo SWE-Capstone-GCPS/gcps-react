@@ -48,7 +48,30 @@ class BusTrackingSystem:
                 {'lat': 33.9696, 'lng': -84.0947},  # Duluth Hwy
                 {'lat': 33.9592, 'lng': -84.1118},  # Duluth Town Green
             ],
-            # Add other bus routes here...
+            'BUS-003': [
+                {'lat': 34.0515, 'lng': -84.0712},  # Suwanee Town Center
+                {'lat': 34.0598, 'lng': -84.0741},  # Lawrenceville-Suwanee Rd
+                {'lat': 34.0805, 'lng': -84.0778},  # I-85 N
+                {'lat': 34.1205, 'lng': -84.0044},  # I-985 N
+                {'lat': 34.1207, 'lng': -83.9911},  # Buford Dr NE
+                {'lat': 34.1207, 'lng': -83.9911},  # Buford Town Center
+            ],
+            'BUS-004': [
+                {'lat': 33.9412, 'lng': -84.2135},  # Norcross City Hall
+                {'lat': 33.9470, 'lng': -84.2179},  # Buford Hwy NE
+                {'lat': 33.9613, 'lng': -84.2245},  # Jimmy Carter Blvd
+                {'lat': 33.9695, 'lng': -84.2336},  # Peachtree Industrial Blvd
+                {'lat': 33.9695, 'lng': -84.2336},  # Peachtree Corners Circle
+                {'lat': 33.9695, 'lng': -84.2336},  # Peachtree Corners Town Center
+            ],
+            'BUS-005': [
+                {'lat': 33.9887, 'lng': -83.8977},  # Dacula City Hall
+                {'lat': 33.9933, 'lng': -83.8915},  # Dacula Rd
+                {'lat': 34.0070, 'lng': -83.8698},  # GA-8 E
+                {'lat': 34.0161, 'lng': -83.8327},  # GA-324 E
+                {'lat': 34.0190, 'lng': -83.8285},  # Auburn Rd
+                {'lat': 34.0190, 'lng': -83.8285},  # Auburn City Hall
+            ],
         }
 
     def delivery_report(self, err, msg):

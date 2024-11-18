@@ -12,6 +12,7 @@
   padding: 20px;
   z-index: 1;
   box-shadow: 2px 0 5px rgba(0, 0, 0, 0.1);
+  overflow-y: auto;
 }
 
 .sidebar-title {
@@ -21,13 +22,24 @@
 }
 
 .bus-details {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #4a5568;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.bus-details:hover {
+  background-color: #718096;
+}
+
+.bus-details h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.2rem;
 }
 
 .bus-details p {
-  margin: 0;
+  margin: 5px 0;
   font-size: 0.9rem;
 }
 
